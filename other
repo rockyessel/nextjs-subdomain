@@ -1,0 +1,109 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getHostnameDataOrDefault } from './lib/db';
+
+export const config = {
+  matcher: ['/', '/about', '/_subdomain/:path'],
+};
+
+export default async function middleware(req: NextRequest) {
+  const url = req.nextUrl;
+
+  // Get hostname (e.g. vercel.com, test.vercel.app, etc.)
+  const hostname = req.headers.get('host');
+
+  // If localhost, assign the host value manually
+  // If prod, get the custom domain/subdomain value by removing the root URL
+  // (in the case of "subdomain-3.localhost:3000", "localhost:3000" is the root URL)
+  // process.env.NODE_ENV === "production" indicates that the app is deployed to a production environment
+  // process.env.VERCEL === "1" indicates that the app is deployed on Vercel
+  const currentHost =
+    process.env.NODE_ENV === 'production' && process.env.VERCEL === '1'
+      ? hostname!.replace(`.buildwithnext.com`, '')
+      : hostname!.replace(`.localhost:3000`, '');
+
+  console.log('currentHost: ', currentHost);
+
+  const data = await getHostnameDataOrDefault(currentHost);
+  console.log('currentHost Data: ', data);
+
+  // Prevent security issues – users should not be able to canonically access
+  // the pages/sites folder and its respective contents.
+  // if (url.pathname.startsWith(`/_subdomain`)) {
+  //   url.pathname = `/404`;
+  //   console.log('URL 404: ', url);
+  // } else {
+  // console.log('URL 2', req.nextUrl.href)
+  // rewrite to the current subdomain under the pages/sites folder
+  url.pathname = `/subdomain/${data!.subdomain}${url.pathname}`;
+  console.log('URL Pathname: ', url);
+  // }
+
+  return NextResponse.rewrite(url);
+}
+
+// import { NextRequest, NextResponse } from 'next/server';
+
+// const OUR_DOMAIN =
+//   process.env.NODE_ENV === 'production' ? 'acme.com' : 'localhost:3000';
+
+// export function middleware(req: NextRequest) {
+//   const host = req.headers.get('host');
+//   console.log('Host: ', host);
+
+//   if (host!.endsWith(`.${OUR_DOMAIN}`)) {
+//     const subdomain = host!.replace(`.${OUR_DOMAIN}`, '');
+//     console.log('Subdomain: ', subdomain);
+//     const url = req.nextUrl.clone();
+//     console.log('URL: ', url);
+//     if (url.pathname.startsWith(`/_subdomain`)) {
+//       url.pathname = `/404`;
+//     } else {
+//       url.pathname = `_subdomain/${subdomain}${url.pathname}`;
+//     }
+//     console.log('URL Last: ', url);
+//     return NextResponse.rewrite(url);
+//   }
+
+//   return NextResponse.next();
+// }
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getUserBySubdomain } from './lib/users';
+import { UserData } from './interface';
+
+export default async function middleware(req: NextApiRequest) {
+  const url = req.nextUrl;
+  const hostname = req.headers.get('host');
+
+  // Extract the subdomain if it exists
+  const subdomainMatch = hostname!.match(/^(.*?)\.example\.com$/);
+  const subdomain = subdomainMatch ? subdomainMatch[1] : null;
+
+  // If there's a subdomain or if the host is localhost, proceed with subdomain logic
+  if (subdomain !== null || hostname!.includes('localhost')) {
+    // Determine the subdomain to use, whether it's from the subdomain or 'default' for localhost
+    const subdomainToUse = subdomain || 'default';
+
+    // Validate subdomain here
+    const foundUser = (await getUserBySubdomain(subdomainToUse)) as UserData;
+
+    if (foundUser) {
+      // Build the subdomain path
+      const subdomainPath = `/subdomain/${foundUser.username}`;
+
+      // Check the URL pathname to determine the appropriate rewrite
+      if (url.pathname === '/about') {
+        // Rewrite to the "about" page for the current subdomain
+        url.pathname = `${subdomainPath}/about`;
+      } else {
+        // Rewrite to other paths under the current subdomain
+        url.pathname = `${subdomainPath}${url.pathname}`;
+      }
+
+      return NextResponse.rewrite(url);
+    }
+  }
+
+  // If there's no subdomain and it's not localhost, proceed with normal route handling
+  return NextResponse.next();
+}
