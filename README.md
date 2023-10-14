@@ -14,10 +14,10 @@ Follow these steps to get started with this Next.js subdomain template:
 1. Clone the repository to your local machine:
 
    ```bash
-   git clone https://github.com/your-username/nextjs-subdomain-template.git
+   git clone https://github.com/your-username/nextjs-subdomain.git
 Install dependencies:
 ```js
-    cd nextjs-subdomain-template
+    cd nextjs-subdomain
     npm install
 ```
 
